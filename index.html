@@ -252,7 +252,11 @@ SB.TouchButtons = {
   _canvas: null,
   _startPressCount: 0,
   _startPressTimer: 0,
-  _pressed: { jump:false, snow:false, start:false },
+  _pressed: {},
+  _dragging: null,
+  _dragStartPos: null,
+  _dragStartBtn: null,
+  _offsets: {}, // stores custom positions per button id
 
   init(canvas) {
     this._canvas = canvas;
@@ -260,59 +264,98 @@ SB.TouchButtons = {
       const rect = canvas.getBoundingClientRect();
       const scaleX = SB.CONFIG.W / rect.width;
       const scaleY = SB.CONFIG.H / rect.height;
-      const clientX = e.touches ? e.touches[0].clientX : e.clientX;
-      const clientY = e.touches ? e.touches[0].clientY : e.clientY;
-      return { x: (clientX - rect.left) * scaleX, y: (clientY - rect.top) * scaleY };
+      if (e.touches && e.touches.length > 0) {
+        return { x: (e.touches[0].clientX - rect.left) * scaleX, y: (e.touches[0].clientY - rect.top) * scaleY };
+      }
+      return { x: (e.clientX - rect.left) * scaleX, y: (e.clientY - rect.top) * scaleY };
     };
-    const checkBtns = (pos) => {
-      const btns = this._getButtons();
-      for (const b of btns) {
-        if (pos.x >= b.x && pos.x <= b.x + b.w && pos.y >= b.y && pos.y <= b.y + b.h) {
-          return b.id;
-        }
+    const findBtn = (pos) => {
+      for (const b of this._getButtons()) {
+        if (pos.x >= b.x && pos.x <= b.x + b.w && pos.y >= b.y && pos.y <= b.y + b.h) return b;
       }
       return null;
     };
     const onDown = (e) => {
       e.preventDefault();
       const pos = getPos(e);
-      const id = checkBtns(pos);
-      if (id) { this._pressed[id] = true; this._handlePress(id); }
+      const btn = findBtn(pos);
+      if (btn) {
+        this._pressed[btn.id] = true;
+        this._dragStartPos = { x: pos.x, y: pos.y };
+        this._dragStartBtn = btn;
+        this._dragStartOffset = { x: btn.x, y: btn.y };
+        this._dragging = null; // not dragging yet — wait for movement
+        this._handlePress(btn.id);
+      }
     };
-    const onUp = (e) => {
+    const onMove = (e) => {
+      if (!this._dragStartBtn) return;
       e.preventDefault();
       const pos = getPos(e);
-      const id = checkBtns(pos);
-      if (id) this._pressed[id] = false;
-      // Release all on touchend/cancel
+      if (e.touches && e.touches.length > 1) return; // ignore multi-touch
+      const dx = pos.x - this._dragStartPos.x;
+      const dy = pos.y - this._dragStartPos.y;
+      if (Math.abs(dx) > 5 || Math.abs(dy) > 5) {
+        this._dragging = this._dragStartBtn.id;
+        this._pressed[this._dragStartBtn.id] = false; // release button while dragging
+        const newX = SB.Utils.clamp(this._dragStartOffset.x + dx, 2, SB.CONFIG.W - this._dragStartBtn.w - 2);
+        const newY = SB.Utils.clamp(this._dragStartOffset.y + dy, SB.CONFIG.H - 180, SB.CONFIG.H - this._dragStartBtn.h - 2);
+        this._offsets[this._dragStartBtn.id] = { x: newX, y: newY };
+      }
+    };
+    const onUp = (e) => {
+      if (this._dragging) {
+        this._dragging = null;
+      } else if (this._dragStartBtn) {
+        this._pressed[this._dragStartBtn.id] = false;
+      }
+      this._dragStartBtn = null;
+      this._dragStartPos = null;
+      // Release all on touchend
       if (e.type === 'touchend' || e.type === 'touchcancel') {
-        for (const k of ['jump','snow','start','jump2','snow2','start2']) this._pressed[k] = false;
+        for (const k of Object.keys(this._pressed)) this._pressed[k] = false;
       }
     };
     canvas.addEventListener('mousedown', onDown);
+    canvas.addEventListener('mousemove', onMove);
     canvas.addEventListener('mouseup', onUp);
-    canvas.addEventListener('mouseleave', () => { for (const k of ['jump','snow','start','jump2','snow2','start2']) this._pressed[k]=false; });
+    canvas.addEventListener('mouseleave', () => { for (const k of Object.keys(this._pressed)) this._pressed[k]=false; this._dragging=null; this._dragStartBtn=null; });
     canvas.addEventListener('touchstart', onDown, {passive:false});
+    canvas.addEventListener('touchmove', onMove, {passive:false});
     canvas.addEventListener('touchend', onUp);
     canvas.addEventListener('touchcancel', onUp);
   },
 
   _getButtons() {
-    // Scale buttons for mobile — bigger on small screens
     const scale = Math.min(window.innerWidth / SB.CONFIG.W, window.innerHeight / SB.CONFIG.H);
-    const bw = scale < 0.8 ? 110 : 90;
-    const bh = scale < 0.8 ? 54 : 44;
-    const margin = scale < 0.8 ? 8 : 12;
+    const bw = scale < 0.8 ? 80 : 70;
+    const bh = scale < 0.8 ? 50 : 40;
+    const bigW = scale < 0.8 ? 100 : 80;
     const row1 = SB.CONFIG.H - bh - 8;
     const row2 = row1 - bh - 4;
-    const btns = [
-      { id:'jump',  x: margin, y: row1, w: bw, h: bh, label: 'JUMP', color: '#4488ff', colorPressed: '#2266cc', player:1 },
-      { id:'snow',  x: SB.CONFIG.W/2 - bw/2, y: row1, w: bw, h: bh, label: 'SNOW', color: '#88ccff', colorPressed: '#5599cc', player:1 },
-      { id:'start', x: SB.CONFIG.W - bw - margin, y: row1, w: bw, h: bh, label: 'START', color: '#ff8844', colorPressed: '#cc6622', player:0 },
-      { id:'jump2', x: margin, y: row2, w: bw, h: bh, label: 'P2 JUMP', color: '#cc4444', colorPressed: '#992222', player:2 },
-      { id:'snow2', x: SB.CONFIG.W/2 - bw/2, y: row2, w: bw, h: bh, label: 'P2 SNOW', color: '#ee6666', colorPressed: '#bb3333', player:2 },
+    const is2P = SB.Scenes._pendingMode === '2P' || (SB.Scenes._data && SB.Scenes._data.player2);
+    const defs = [
+      // Directional pad — left side
+      { id:'left',  x: 4,  y: row2, w: bw, h: bh, label: '◀', color: '#336699', colorPressed: '#224466', player:1 },
+      { id:'right', x: 4 + bw + 2, y: row2, w: bw, h: bh, label: '▶', color: '#336699', colorPressed: '#224466', player:1 },
+      // Action buttons
+      { id:'jump',  x: 4 + bw*2 + 4, y: row2, w: bigW, h: bh, label: 'JUMP', color: '#4488ff', colorPressed: '#2266cc', player:1 },
+      { id:'snow',  x: 4 + bw*2 + bigW + 6, y: row2, w: bigW, h: bh, label: 'SNOW', color: '#88ccff', colorPressed: '#5599cc', player:1 },
+      { id:'start', x: SB.CONFIG.W - bigW - 16, y: row1, w: bigW, h: bh, label: 'START', color: '#ff8844', colorPressed: '#cc6622', player:0 },
     ];
-    return btns;
+    // P2 controls when in co-op
+    if (is2P) {
+      defs.push(
+        { id:'left2',  x: SB.CONFIG.W - bw*4 - bigW - 22, y: row1, w: bw, h: bh, label: '◀', color: '#994444', colorPressed: '#662222', player:2 },
+        { id:'right2', x: SB.CONFIG.W - bw*3 - bigW - 20, y: row1, w: bw, h: bh, label: '▶', color: '#994444', colorPressed: '#662222', player:2 },
+        { id:'jump2',  x: SB.CONFIG.W - bw*2 - bigW - 18, y: row1, w: bigW, h: bh, label: 'P2 JUMP', color: '#cc4444', colorPressed: '#992222', player:2 },
+        { id:'snow2',  x: SB.CONFIG.W - bigW - 16, y: row1, w: bigW, h: bh, label: 'P2 SNOW', color: '#ee6666', colorPressed: '#bb3333', player:2 }
+      );
+    }
+    for (const b of defs) {
+      if (this._offsets[b.id]) { b.x = this._offsets[b.id].x; b.y = this._offsets[b.id].y; }
+    }
+    return defs;
   },
 
   _handlePress(id) {
@@ -322,12 +365,24 @@ SB.TouchButtons = {
     } else if (id === 'snow') {
       SB.Input._keys['KeyX'] = true;
       setTimeout(() => { SB.Input._keys['KeyX'] = false; }, 80);
+    } else if (id === 'left') {
+      SB.Input._keys['ArrowLeft'] = true;
+      setTimeout(() => { SB.Input._keys['ArrowLeft'] = false; }, 80);
+    } else if (id === 'right') {
+      SB.Input._keys['ArrowRight'] = true;
+      setTimeout(() => { SB.Input._keys['ArrowRight'] = false; }, 80);
     } else if (id === 'jump2') {
       SB.Input._keys['KeyW'] = true;
       setTimeout(() => { SB.Input._keys['KeyW'] = false; }, 80);
     } else if (id === 'snow2') {
       SB.Input._keys['KeyE'] = true;
       setTimeout(() => { SB.Input._keys['KeyE'] = false; }, 80);
+    } else if (id === 'left2') {
+      SB.Input._keys['KeyA'] = true;
+      setTimeout(() => { SB.Input._keys['KeyA'] = false; }, 80);
+    } else if (id === 'right2') {
+      SB.Input._keys['KeyD'] = true;
+      setTimeout(() => { SB.Input._keys['KeyD'] = false; }, 80);
     } else if (id === 'start') {
       this._startPressCount++;
       if (this._startPressCount === 1) {
@@ -351,19 +406,24 @@ SB.TouchButtons = {
   },
 
   update() {
-    // Keep keyboard state in sync with touch buttons
-    if (this._pressed.jump)  SB.Input._keys['ArrowUp'] = true;
-    if (this._pressed.snow)  SB.Input._keys['KeyX'] = true;
-    if (this._pressed.jump2) SB.Input._keys['KeyW'] = true;
-    if (this._pressed.snow2) SB.Input._keys['KeyE'] = true;
+    // Directional buttons — held continuously
+    if (this._pressed.left)   SB.Input._keys['ArrowLeft'] = true;
+    if (this._pressed.right)  SB.Input._keys['ArrowRight'] = true;
+    if (this._pressed.left2)  SB.Input._keys['KeyA'] = true;
+    if (this._pressed.right2) SB.Input._keys['KeyD'] = true;
+    // Action buttons — one-shot but keep held while pressed
+    if (this._pressed.jump)   SB.Input._keys['ArrowUp'] = true;
+    if (this._pressed.snow)   SB.Input._keys['KeyX'] = true;
+    if (this._pressed.jump2)  SB.Input._keys['KeyW'] = true;
+    if (this._pressed.snow2)  SB.Input._keys['KeyE'] = true;
   },
 
   draw(ctx, showJumpSnow, twoPlayer) {
     const btns = this._getButtons();
     for (const b of btns) {
-      if (!showJumpSnow && (b.id === 'jump' || b.id === 'snow')) continue;
-      if (b.player === 2 && !twoPlayer) continue; // P2 buttons only in co-op
-      if (b.player === 2 && !showJumpSnow) continue; // hide P2 buttons on non-gameplay screens
+      const isGameBtn = ['jump','snow','left','right','jump2','snow2','left2','right2'].includes(b.id);
+      if (!showJumpSnow && isGameBtn) continue;
+      if (b.player === 2 && !twoPlayer) continue;
       const pressed = this._pressed[b.id];
       ctx.save();
       // Button shadow
@@ -388,6 +448,11 @@ SB.TouchButtons = {
       if (pressed) {
         ctx.fillStyle = 'rgba(0,0,0,0.2)';
         ctx.beginPath(); ctx.roundRect(b.x+2, b.y+2, b.w-4, b.h/2, 6); ctx.fill();
+      }
+      // Drag hint — subtle dots at top-right corner
+      ctx.fillStyle = 'rgba(255,255,255,0.25)';
+      for (let r=0;r<2;r++) for (let c=0;c<3;c++) {
+        ctx.beginPath(); ctx.arc(b.x+b.w-10+c*4, b.y+6+r*4, 1, 0, Math.PI*2); ctx.fill();
       }
       ctx.restore();
     }
