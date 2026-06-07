@@ -328,30 +328,41 @@ SB.TouchButtons = {
 
   _getButtons() {
     const scale = Math.min(window.innerWidth / SB.CONFIG.W, window.innerHeight / SB.CONFIG.H);
-    const bw = scale < 0.8 ? 80 : 70;
-    const bh = scale < 0.8 ? 50 : 40;
-    const bigW = scale < 0.8 ? 100 : 80;
-    const row1 = SB.CONFIG.H - bh - 8;
-    const row2 = row1 - bh - 4;
+    const tiny = scale < 0.65; // phone portrait
+    const dirW = tiny ? 56 : 72;
+    const dirH = tiny ? 42 : 52;
+    const actW = tiny ? 72 : 90;
+    const actH = tiny ? 42 : 48;
+    const gap = tiny ? 3 : 6;
+    const margin = tiny ? 4 : 8;
+    const row1 = SB.CONFIG.H - dirH - margin; // bottom row
+    const row2 = row1 - dirH - gap; // second row for 2P
     const is2P = SB.Scenes._pendingMode === '2P' || (SB.Scenes._data && SB.Scenes._data.player2);
+
+    // P1 controls — stacked on left
     const defs = [
-      // Directional pad — left side
-      { id:'left',  x: 4,  y: row2, w: bw, h: bh, label: '◀', color: '#336699', colorPressed: '#224466', player:1 },
-      { id:'right', x: 4 + bw + 2, y: row2, w: bw, h: bh, label: '▶', color: '#336699', colorPressed: '#224466', player:1 },
-      // Action buttons
-      { id:'jump',  x: 4 + bw*2 + 4, y: row2, w: bigW, h: bh, label: 'JUMP', color: '#4488ff', colorPressed: '#2266cc', player:1 },
-      { id:'snow',  x: 4 + bw*2 + bigW + 6, y: row2, w: bigW, h: bh, label: 'SNOW', color: '#88ccff', colorPressed: '#5599cc', player:1 },
-      { id:'start', x: SB.CONFIG.W - bigW - 16, y: row1, w: bigW, h: bh, label: 'START', color: '#ff8844', colorPressed: '#cc6622', player:0 },
+      // D-pad: LEFT + RIGHT side by side on bottom row
+      { id:'left',  x: margin, y: row1, w: dirW, h: dirH, label: '◀', color: '#224466', colorPressed: '#112233', player:1 },
+      { id:'right', x: margin + dirW + gap, y: row1, w: dirW, h: dirH, label: '▶', color: '#224466', colorPressed: '#112233', player:1 },
+      // JUMP above d-pad
+      { id:'jump',  x: margin, y: row1 - actH - gap, w: dirW*2 + gap, h: actH, label: 'JUMP', color: '#4488ff', colorPressed: '#2266cc', player:1 },
+      // SNOW on right side
+      { id:'snow',  x: SB.CONFIG.W - actW - margin, y: row1, w: actW, h: dirH, label: 'SNOW', color: '#88ccff', colorPressed: '#5599cc', player:1 },
+      // START top-right
+      { id:'start', x: SB.CONFIG.W - actW - margin, y: row1 - actH - gap - actH - gap, w: actW, h: actH, label: 'START', color: '#ff8844', colorPressed: '#cc6622', player:0 },
     ];
-    // P2 controls when in co-op
+
+    // P2 controls when in co-op — mirrored on right
     if (is2P) {
+      const p2x = SB.CONFIG.W - margin - dirW*2 - gap - dirW - gap - actW;
       defs.push(
-        { id:'left2',  x: SB.CONFIG.W - bw*4 - bigW - 22, y: row1, w: bw, h: bh, label: '◀', color: '#994444', colorPressed: '#662222', player:2 },
-        { id:'right2', x: SB.CONFIG.W - bw*3 - bigW - 20, y: row1, w: bw, h: bh, label: '▶', color: '#994444', colorPressed: '#662222', player:2 },
-        { id:'jump2',  x: SB.CONFIG.W - bw*2 - bigW - 18, y: row1, w: bigW, h: bh, label: 'P2 JUMP', color: '#cc4444', colorPressed: '#992222', player:2 },
-        { id:'snow2',  x: SB.CONFIG.W - bigW - 16, y: row1, w: bigW, h: bh, label: 'P2 SNOW', color: '#ee6666', colorPressed: '#bb3333', player:2 }
+        { id:'left2',  x: p2x, y: row2, w: dirW, h: dirH, label: '◀', color: '#662222', colorPressed: '#441111', player:2 },
+        { id:'right2', x: p2x + dirW + gap, y: row2, w: dirW, h: dirH, label: '▶', color: '#662222', colorPressed: '#441111', player:2 },
+        { id:'jump2',  x: p2x, y: row2 - actH - gap, w: dirW*2 + gap, h: actH, label: 'P2 JUMP', color: '#cc4444', colorPressed: '#992222', player:2 },
+        { id:'snow2',  x: SB.CONFIG.W - actW - margin, y: row2, w: actW, h: dirH, label: 'P2 SNOW', color: '#ee6666', colorPressed: '#bb3333', player:2 }
       );
     }
+
     for (const b of defs) {
       if (this._offsets[b.id]) { b.x = this._offsets[b.id].x; b.y = this._offsets[b.id].y; }
     }
